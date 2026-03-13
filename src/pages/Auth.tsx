@@ -141,6 +141,7 @@ const Auth = () => {
             RealThingks CRM
           </CardTitle>
           <CardDescription className="text-base mt-2">
+            Sign in to your account
           </CardDescription>
         </CardHeader>
         <CardContent>

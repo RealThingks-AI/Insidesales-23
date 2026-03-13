@@ -14,7 +14,7 @@ const Dashboard = () => {
       {/* Header - fixed height matching sidebar */}
       <div className="flex-shrink-0 h-16 border-b bg-background px-6 flex items-center">
         <div className="flex items-center justify-between w-full">
-          <h1 className="text-2xl font-semibold text-foreground">Revenue Analytics</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
           <div className="flex items-center gap-4">
             <NotificationBell placement="down" size="small" />
             <Select value={selectedYear.toString()} onValueChange={value => setSelectedYear(parseInt(value))}>

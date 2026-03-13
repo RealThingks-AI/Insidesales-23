@@ -140,8 +140,6 @@ const DealsPage = () => {
           modified_by: user?.id
         };
         
-        console.log("Update data for existing deal:", updateData);
-        
         await handleUpdateDeal(selectedDeal.id, updateData);
         await fetchDeals();
       }

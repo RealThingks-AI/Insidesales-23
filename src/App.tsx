@@ -195,15 +195,17 @@ const AppRouter = () => (
 );
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <SecurityEnhancedApp>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <AppRouter />
-      </TooltipProvider>
-    </SecurityEnhancedApp>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <SecurityEnhancedApp>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <AppRouter />
+        </TooltipProvider>
+      </SecurityEnhancedApp>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;

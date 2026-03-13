@@ -35,24 +35,11 @@ interface DealFormProps {
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [actionModalOpen, setActionModalOpen] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
-  // NEW: Track current user id for default Lead Owner
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // Track current user id for default Lead Owner
+  const currentUserId = isCreating ? user?.id || null : null;
   const { displayNames: currentUserDisplayNames } = useUserDisplayNames(currentUserId ? [currentUserId] : []);
-
-  // Fetch current user once when creating a deal
-  useEffect(() => {
-    if (!isCreating) return;
-    supabase.auth.getUser().then(({ data, error }) => {
-      if (error) {
-        console.warn("DealForm: Failed to get current user for lead owner default:", error);
-        return;
-      }
-      const uid = data?.user?.id || null;
-      setCurrentUserId(uid);
-      console.log("DealForm: currentUserId for default lead owner:", uid);
-    });
-  }, [isCreating]);
 
   // Auto-fill Lead Owner for new deal creation if missing/Unknown
   useEffect(() => {

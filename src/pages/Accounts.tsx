@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect } from "react";
-import { Plus, Upload, Download, Columns, MoreVertical, Search, Filter, Trash2, X, Users } from "lucide-react";
+import { Plus, Upload, Download, Columns, MoreVertical, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -12,6 +15,8 @@ import { AccountTable } from "@/components/AccountTable";
 import { useSimpleAccountsImportExport } from "@/hooks/useSimpleAccountsImportExport";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
+import { useToast } from "@/hooks/use-toast";
+import { useCRUDAudit } from "@/hooks/useCRUDAudit";
 
 const Accounts = () => {
   const [searchTerm, setSearchTerm] = useState("");

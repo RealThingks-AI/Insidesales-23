@@ -225,7 +225,6 @@ const DealsPage = () => {
   const handleImportDeals = async (importedDeals: (Partial<Deal> & { shouldUpdate?: boolean })[]) => {
     // This function is kept for compatibility but the actual import logic is now handled
     // by the simplified CSV processor in useDealsImportExport hook
-    console.log('handleImportDeals called with:', importedDeals.length, 'deals');
     // Refresh data after import
     await fetchDeals();
   };

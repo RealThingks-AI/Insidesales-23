@@ -118,7 +118,7 @@ const Contacts = () => {
                 Export CSV
               </DropdownMenuItem>
               {selectedContacts.length > 0 && (
-                <DropdownMenuItem onClick={handleBulkDelete} className="text-destructive focus:text-destructive">
+                <DropdownMenuItem onClick={() => setShowDeleteConfirm(true)} className="text-destructive focus:text-destructive">
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete Selected ({selectedContacts.length})
                 </DropdownMenuItem>

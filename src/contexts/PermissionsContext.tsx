@@ -85,7 +85,7 @@ export const PermissionsProvider = ({ children }: PermissionsProviderProps) => {
         return [];
       }
       
-      return data as PagePermission[];
+      return (data as unknown) as PagePermission[];
     },
     enabled: !!user,
     staleTime: 10 * 60 * 1000,

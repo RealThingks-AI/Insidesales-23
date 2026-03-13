@@ -48,7 +48,7 @@ const PageAccessSettings = () => {
         .order('page_name');
       
       if (error) throw error;
-      setPermissions((data || []) as PagePermission[]);
+      setPermissions((data || []) as unknown as PagePermission[]);
     } catch (error) {
       console.error('Error fetching page permissions:', error);
       toast.error('Failed to load page permissions');

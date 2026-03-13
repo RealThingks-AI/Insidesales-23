@@ -317,9 +317,7 @@ interface DealFormProps {
                     variant="ghost" 
                     size="sm"
                     onClick={() => {
-                      console.log("Toggle button clicked! Current state:", showPreviousStages);
                       setShowPreviousStages(!showPreviousStages);
-                      console.log("New state will be:", !showPreviousStages);
                     }}
                   >
                     {showPreviousStages ? 'Hide Previous Stages' : 'Show All Stages'}

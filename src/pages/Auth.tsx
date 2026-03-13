@@ -78,15 +78,6 @@ const Auth = () => {
       // Add small delay for Safari to process cleanup
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      // Attempt global sign out to clear any existing session
-      try {
-        await supabase.auth.signOut({ scope: 'global' });
-        // Another small delay for Safari
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (err) {
-        console.warn('Pre-login signout failed:', err);
-      }
-
       // Safari-specific login with extended timeout
       const { data, error } = await Promise.race([
         supabase.auth.signInWithPassword({
@@ -150,6 +141,7 @@ const Auth = () => {
             RealThingks CRM
           </CardTitle>
           <CardDescription className="text-base mt-2">
+            Sign in to your account
           </CardDescription>
         </CardHeader>
         <CardContent>

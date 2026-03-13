@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import SecurityEnhancedApp from "@/components/SecurityEnhancedApp";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppSidebar } from "@/components/AppSidebar";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
@@ -194,15 +195,17 @@ const AppRouter = () => (
 );
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <SecurityEnhancedApp>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <AppRouter />
-      </TooltipProvider>
-    </SecurityEnhancedApp>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <SecurityEnhancedApp>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <AppRouter />
+        </TooltipProvider>
+      </SecurityEnhancedApp>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;

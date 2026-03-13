@@ -13,6 +13,7 @@ import { DealStageForm } from "./deal-form/DealStageForm";
 import { DealActionItemsModal } from "./DealActionItemsModal";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
+import { useAuth } from "@/hooks/useAuth";
 
 interface DealFormProps {
   deal: Deal | null;

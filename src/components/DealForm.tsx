@@ -230,7 +230,6 @@ interface DealFormProps {
     setLoading(true);
     
     try {
-      console.log(`Moving deal from ${currentStage} to ${targetStage}`);
       
       const updatedData = {
         ...formData,

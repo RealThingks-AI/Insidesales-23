@@ -31,6 +31,7 @@ interface NotificationPrefs {
   leads_notifications: boolean;
   contacts_notifications: boolean;
   accounts_notifications: boolean;
+  daily_reminder_time: string;
 }
 
 interface DisplayPrefs {
@@ -73,7 +74,8 @@ const AccountSettingsPage = () => {
     notification_frequency: 'instant',
     leads_notifications: true,
     contacts_notifications: true,
-    accounts_notifications: true
+    accounts_notifications: true,
+    daily_reminder_time: '07:00'
   });
 
   const [displayPrefs, setDisplayPrefs] = useState<DisplayPrefs>({
@@ -116,8 +118,14 @@ const AccountSettingsPage = () => {
         .eq('id', user.id)
         .single();
 
+      // Prefer auth display name if profile full_name looks like an email
+      const profileName = profileData?.full_name;
+      const authName = user.user_metadata?.full_name;
+      const isEmailLikeName = profileName && profileName.includes('@');
+      const resolvedName = (isEmailLikeName ? authName : profileName) || authName || '';
+
       const loadedProfile: ProfileData = {
-        full_name: profileData?.full_name || user.user_metadata?.full_name || '',
+        full_name: resolvedName,
         email: profileData?.['Email ID'] || user.email || '',
         phone: profileData?.phone || '',
         timezone: profileData?.timezone || 'Asia/Kolkata',
@@ -143,7 +151,8 @@ const AccountSettingsPage = () => {
         notification_frequency: notifData?.notification_frequency ?? 'instant',
         leads_notifications: notifData?.leads_notifications ?? true,
         contacts_notifications: notifData?.contacts_notifications ?? true,
-        accounts_notifications: notifData?.accounts_notifications ?? true
+        accounts_notifications: notifData?.accounts_notifications ?? true,
+        daily_reminder_time: (notifData as any)?.daily_reminder_time ?? '07:00'
       };
       setNotificationPrefs(loadedNotifPrefs);
 
@@ -208,9 +217,10 @@ const AccountSettingsPage = () => {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl pb-6">
+    <div className="space-y-6 w-full pb-6">
       <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-md">
+        <div className="sticky top-0 z-10 bg-background pb-2 border-b border-border">
+          <TabsList className="grid w-full grid-cols-3 max-w-md">
           <TabsTrigger value="profile" className="flex items-center gap-1.5 text-xs sm:text-sm">
             <User className="h-4 w-4" />
             <span className="hidden sm:inline">Profile</span>
@@ -223,7 +233,8 @@ const AccountSettingsPage = () => {
             <Bell className="h-4 w-4" />
             <span className="hidden sm:inline">Notifications</span>
           </TabsTrigger>
-        </TabsList>
+          </TabsList>
+        </div>
 
         <TabsContent value="profile" className="mt-6 space-y-4">
           <ProfileSection 
@@ -254,6 +265,7 @@ const AccountSettingsPage = () => {
             notificationPrefs={notificationPrefs}
             setNotificationPrefs={setNotificationPrefs}
             userId={user?.id || ''}
+            userTimezone={profile.timezone}
           />
         </TabsContent>
       </Tabs>

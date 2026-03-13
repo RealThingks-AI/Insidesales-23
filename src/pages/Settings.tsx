@@ -1,13 +1,28 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { User, Shield, Mail } from "lucide-react";
+import { User, Shield, Mail, Megaphone } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUserRole } from "@/hooks/useUserRole";
-import { usePermissions } from "@/contexts/PermissionsContext";
-import AccountSettingsPage from "@/components/settings/AccountSettingsPage";
-import AdminSettingsPage from "@/components/settings/AdminSettingsPage";
-import EmailCenterPage from "@/components/settings/EmailCenterPage";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Lazy load heavy settings pages
+const AccountSettingsPage = lazy(() => import("@/components/settings/AccountSettingsPage"));
+const AdminSettingsPage = lazy(() => import("@/components/settings/AdminSettingsPage"));
+const EmailCenterPage = lazy(() => import("@/components/settings/EmailCenterPage"));
+const CampaignSettings = lazy(() => import("@/components/settings/CampaignSettings"));
+
+// Loading skeleton for settings content
+const SettingsContentSkeleton = () => (
+  <div className="space-y-6">
+    <Skeleton className="h-8 w-48" />
+    <div className="space-y-4">
+      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-24 w-full" />
+    </div>
+  </div>
+);
 
 interface SettingsTab {
   id: string;
@@ -33,6 +48,12 @@ const tabs: SettingsTab[] = [
     label: "Email Center",
     icon: Mail,
   },
+  {
+    id: "campaigns",
+    label: "Campaigns",
+    icon: Megaphone,
+    adminOnly: true,
+  },
 ];
 
 const Settings = () => {
@@ -41,13 +62,7 @@ const Settings = () => {
     return searchParams.get('tab') || 'account';
   });
   const { userRole } = useUserRole();
-  const { refreshPermissions } = usePermissions();
   const isAdmin = userRole === "admin";
-
-  // Refresh permissions on mount to ensure latest role data
-  useEffect(() => {
-    refreshPermissions();
-  }, [refreshPermissions]);
 
   const visibleTabs = tabs.filter(tab => !tab.adminOnly || isAdmin);
 
@@ -119,6 +134,8 @@ const Settings = () => {
         return <AdminSettingsPage defaultSection={section} />;
       case "email":
         return <EmailCenterPage defaultTab={section} />;
+      case "campaigns":
+        return <CampaignSettings />;
       default:
         return <AccountSettingsPage />;
     }
@@ -170,7 +187,9 @@ const Settings = () => {
           aria-labelledby={`tab-${activeTab}`}
           tabIndex={0}
         >
-          {renderContent()}
+          <Suspense fallback={<SettingsContentSkeleton />}>
+            {renderContent()}
+          </Suspense>
         </div>
       </ScrollArea>
     </div>

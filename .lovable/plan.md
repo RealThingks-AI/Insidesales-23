@@ -1,91 +1,139 @@
 
 
-## Fix Note Editor Bullet Point & Stakeholders Layout Issues
+# Plan: Add New Roles + PageAccessGuard + Update Page Permissions
 
-### Issues Found
+## Current State
 
-1. **Bullet point moves when typing**: `autoFocus` on the Textarea (line 633) places the cursor at position 0 (before `"• "`), so typing inserts text before the bullet instead of after it.
+- **DB enum `user_role`**: only `admin`, `manager`, `user`
+- **`page_permissions` table**: only has `admin_access`, `manager_access`, `user_access` boolean columns
+- **`PermissionsContext`**: fetches role + permissions separately (2 queries), checks access via `hasPageAccess()` but **never enforced in routes**
+- **`ChangeRoleModal`**: only shows Admin/User options
+- **Edge function `user-admin`**: validates roles as `['admin', 'user']` only
+- **`Settings.tsx`**: uses `useUserRole()` to check `isAdmin` for showing admin tabs
+- **Sidebar**: shows all menu items to all users — no filtering by access
 
-2. **Notes panel lacks proper scrollbar**: The notes summary panel (line 580-679) has a `max-h-[280px]` on the inner div but the outer wrapper has no scroll constraint, so it still pushes content.
+## New Roles Definition
 
-3. **Stakeholders section grows unbounded**: The `StakeholdersSection` component has no max-height. When the Notes panel is open with many notes, it consumes all vertical space, squishing the Updates and Action Items sections to near-zero height.
+| Role | DB Value | Pages | Admin Settings |
+|------|----------|-------|----------------|
+| Super Admin | `super_admin` | All | Yes |
+| Admin | `admin` (existing) | All | Yes |
+| Sales Head | `sales_head` | All except Administration | No |
+| Field Sales | `field_sales` | All except Administration | No |
+| Inside Sales | `inside_sales` | Dashboard, Accounts, Contacts, Campaigns, Notifications, Settings (account only) | No |
+| User | `user` (existing) | Based on `page_permissions` user_access column | No |
 
-### Changes (single file: `src/components/DealExpandedPanel.tsx`)
+## Changes Required
 
-#### Fix 1: Bullet cursor positioning (line 628-634)
+### 1. Database Migration
 
-Replace `autoFocus` on the Textarea with a `ref` callback that focuses the element AND places the cursor at the end of the text (after `"• "`):
-
-```tsx
-<Textarea
-  value={noteText}
-  onChange={(e) => setNoteText(e.target.value)}
-  onKeyDown={handleNoteKeyDown}
-  className="min-h-[100px] text-xs resize-none"
-  ref={(el) => {
-    if (el) {
-      el.focus();
-      const len = el.value.length;
-      el.selectionStart = len;
-      el.selectionEnd = len;
-    }
-  }}
-/>
+**a. Add new enum values:**
+```sql
+ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'super_admin';
+ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'sales_head';
+ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'field_sales';
+ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'inside_sales';
 ```
 
-#### Fix 2: Constrain Stakeholders section height
-
-Wrap the StakeholdersSection output in a container with `max-h` and `overflow-y-auto` so it scrolls when content is large. Change the outer div (line 462) from:
-
-```tsx
-<div className="px-3 pt-1.5 pb-1">
+**b. Add new columns to `page_permissions`:**
+```sql
+ALTER TABLE page_permissions
+  ADD COLUMN super_admin_access boolean DEFAULT true,
+  ADD COLUMN sales_head_access boolean DEFAULT true,
+  ADD COLUMN field_sales_access boolean DEFAULT true,
+  ADD COLUMN inside_sales_access boolean DEFAULT true;
 ```
 
-to:
-
-```tsx
-<div className="px-3 pt-1.5 pb-1 max-h-[45%] overflow-y-auto shrink-0">
+**c. Set correct defaults for Inside Sales** (only Accounts, Contacts, Campaigns, Dashboard, Notifications, Settings):
+```sql
+UPDATE page_permissions SET inside_sales_access = false WHERE route IN ('/deals', '/action-items');
+UPDATE page_permissions SET inside_sales_access = true WHERE route IN ('/accounts', '/contacts', '/campaigns', '/dashboard', '/notifications', '/settings');
 ```
 
-However, since this is not inside a flex parent that uses percentage heights well, a better approach is to change the parent layout. The parent (line 1182) is:
-
-```tsx
-<div className="flex-1 min-h-0 flex flex-col overflow-hidden gap-1">
+**d. Add Campaigns to `page_permissions`** (currently missing):
+```sql
+INSERT INTO page_permissions (page_name, route, description, admin_access, manager_access, user_access, super_admin_access, sales_head_access, field_sales_access, inside_sales_access)
+VALUES ('Campaigns', '/campaigns', 'Campaign management', true, true, true, true, true, true, true)
+ON CONFLICT (route) DO NOTHING;
 ```
 
-The fix: Make the StakeholdersSection a flex item that can shrink, and give it a max-height so it doesn't dominate. Change line 1184 from:
+### 2. Update `PermissionsContext.tsx`
+
+- Update `PagePermission` interface to include new role columns
+- Update `hasPageAccess()` switch to handle all 6 roles: `super_admin`, `admin`, `sales_head`, `field_sales`, `inside_sales`, `user`
+- Add helper booleans: `isSuperAdmin`, `isSalesHead`, `isFieldSales`, `isInsideSales`
+- `isAdmin` should be `true` for both `admin` AND `super_admin` (backward compat)
+- Performance: keep the existing React Query caching (5min/10min stale times) — no extra queries needed
+
+### 3. Create `PageAccessGuard` in `App.tsx`
+
+Add a lightweight component inside `ProtectedRoute` that calls `hasPageAccess(location.pathname)`:
 
 ```tsx
-<StakeholdersSection deal={deal} queryClient={queryClient} />
+const PageAccessGuard = ({ children }) => {
+  const { pathname } = useLocation();
+  const { hasPageAccess, loading } = usePermissions();
+  
+  if (loading) return <LoadingSpinner />;
+  if (!hasPageAccess(pathname)) return <AccessDenied />;
+  return <>{children}</>;
+};
 ```
 
-to wrap it in a constrained container:
+Insert inside `ProtectedRoute` wrapping children inside `FixedSidebarLayout`. This adds zero network requests — it uses already-cached data from `PermissionsContext`.
 
-```tsx
-<div className="shrink-0 max-h-[40%] overflow-y-auto">
-  <StakeholdersSection deal={deal} queryClient={queryClient} />
-</div>
-```
+### 4. Update Sidebar (`AppSidebar.tsx`)
 
-This ensures:
-- Stakeholders section gets at most 40% of the panel height
-- When content exceeds that, a scrollbar appears
-- Updates and Action Items always get their fair share of space
+Filter `menuItems` based on `hasPageAccess()` so users only see pages they can access. Import `usePermissions` and filter the array before rendering.
 
-#### Fix 3: Ensure notes panel scrolls properly
+### 5. Update `Settings.tsx`
 
-The notes summary panel (line 596) already has `max-h-[280px] overflow-y-auto`, but when inside the constrained container from Fix 2, this works correctly. No additional change needed here -- the outer scroll from Fix 2 handles it.
+- Change admin check: `isAdmin` should include `super_admin` 
+- Use `usePermissions()` instead of `useUserRole()` for consistency
 
-### Summary
+### 6. Update `ChangeRoleModal.tsx`
 
-| Change | Line(s) | Description |
-|--------|---------|-------------|
-| Replace `autoFocus` with ref callback | 628-634 | Cursor placed after bullet on open |
-| Wrap StakeholdersSection in scrollable container | 1184 | Max 40% height with scrollbar |
+- Add all 6 roles to the Select dropdown with appropriate icons and descriptions
+- Update permissions description panel for each role
 
-### Technical Notes
+### 7. Update Edge Function `user-admin/index.ts`
 
-- The ref callback fires on every render, but since `el.focus()` is idempotent when already focused, this is harmless
-- The `max-h-[40%]` works because the parent has `flex-1 min-h-0` which resolves to an actual pixel height
-- Updates and Action Items sections keep their `flex-1 min-h-0` with `h-[220px]`, ensuring they share remaining space equally
+- Line 156: expand valid roles: `['admin', 'user', 'super_admin', 'sales_head', 'field_sales', 'inside_sales']`
+- Line 63: ensure `super_admin` is treated as admin for authorization checks
+
+### 8. Update `useUserRole.tsx`
+
+- Update `isAdmin` to include `super_admin`: `const isAdmin = userRole === 'admin' || userRole === 'super_admin'`
+- Add convenience flags for new roles
+
+### 9. Update `PageAccessSettings.tsx`
+
+- Add columns for all 6 roles in the table header and body
+- Each role gets its own Switch toggle
+
+### 10. Update `AdminSettingsPage.tsx`
+
+- Allow `super_admin` access (not just `admin`)
+
+## Performance Impact
+
+- **Zero additional queries** — roles and permissions already fetched once on login via React Query with long cache times
+- **PageAccessGuard** is a pure in-memory check against cached data
+- **Sidebar filtering** is a simple `.filter()` on a 6-item array
+- No change to page load speed for any user role
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| SQL Migration | Add enum values + page_permissions columns |
+| `src/contexts/PermissionsContext.tsx` | Add new roles to interface + hasPageAccess |
+| `src/App.tsx` | Add PageAccessGuard + AccessDenied component |
+| `src/components/AppSidebar.tsx` | Filter menu items by access |
+| `src/pages/Settings.tsx` | Use permissions context, expand admin check |
+| `src/components/ChangeRoleModal.tsx` | Add all 6 roles |
+| `src/components/settings/PageAccessSettings.tsx` | Add 6 role columns |
+| `src/components/settings/AdminSettingsPage.tsx` | Allow super_admin |
+| `src/hooks/useUserRole.tsx` | Expand isAdmin to include super_admin |
+| `supabase/functions/user-admin/index.ts` | Accept new role values |
 

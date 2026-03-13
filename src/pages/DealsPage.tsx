@@ -51,21 +51,14 @@ const DealsPage = () => {
 
   const handleUpdateDeal = async (dealId: string, updates: Partial<Deal>) => {
     try {
-      console.log("=== HANDLE UPDATE DEAL DEBUG ===");
-      console.log("Deal ID:", dealId);
-      console.log("Updates:", updates);
-      
       // Get the existing deal for audit logging
       const existingDeal = deals.find(deal => deal.id === dealId);
       
-      // Ensure we have all required fields for the update
       const updateData = {
         ...updates,
         modified_at: new Date().toISOString(),
         modified_by: user?.id
       };
-
-      console.log("Final update data:", updateData);
 
       const { data, error } = await supabase
         .from('deals')

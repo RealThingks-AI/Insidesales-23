@@ -151,9 +151,6 @@ const DealsPage = () => {
 
   const handleDeleteDeals = async (dealIds: string[]) => {
     try {
-      console.log("Attempting to delete deals:", dealIds);
-
-      // Request the IDs of the rows that were actually deleted (RLS will filter)
       const { data, error } = await supabase
         .from('deals')
         .delete()

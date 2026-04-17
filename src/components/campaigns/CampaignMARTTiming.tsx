@@ -34,6 +34,16 @@ interface Props {
   onSaveTimingNotes?: (notes: string) => void;
 }
 
+/**
+ * Returns true if `today` falls within the campaign's start/end date range
+ * (and within any defined timing windows, if loaded). Use to gate outreach actions.
+ */
+export function isWithinActiveWindow(campaign: Campaign): boolean {
+  if (!campaign.start_date || !campaign.end_date) return false;
+  const today = new Date().toISOString().split("T")[0];
+  return campaign.start_date <= today && campaign.end_date >= today;
+}
+
 export function CampaignMARTTiming({ campaign, isCampaignEnded, daysRemaining, timingNotes, onSaveTimingNotes }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();

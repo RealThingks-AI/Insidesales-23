@@ -1,30 +1,33 @@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCampaigns, type Campaign } from "@/hooks/useCampaigns";
 import { useState, useMemo, useEffect } from "react";
-import { Globe, Plus, Pencil, Trash2 } from "lucide-react";
+import { Globe, Plus, Pencil, Trash2, Building2, Users } from "lucide-react";
 import { regions, countries, countryToRegion, getCountriesForRegion, getFormattedTimezoneList, getTimezonesForCountry, getTimezoneLabel } from "@/utils/countryRegionMapping";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 interface RegionCard {
   country: string;
   region: string;
   timezone: string;
-  messaging_note: string;
 }
 
 function parseRegions(campaign: Campaign): RegionCard[] {
   if (campaign.region) {
     try {
       const arr = JSON.parse(campaign.region);
-      if (Array.isArray(arr) && arr.length > 0) return arr;
+      if (Array.isArray(arr) && arr.length > 0) {
+        // Strip out legacy messaging_note field
+        return arr.map((r: any) => ({ country: r.country || "", region: r.region || "", timezone: r.timezone || "" }));
+      }
     } catch {}
   }
   if (campaign.country || campaign.region) {
     const tz = campaign.notes?.match(/\[timezone:(.+?)\]/)?.[1] || "";
-    return [{ country: campaign.country || "", region: (campaign.region && !campaign.region.startsWith("[")) ? campaign.region : "", timezone: tz, messaging_note: "" }];
+    return [{ country: campaign.country || "", region: (campaign.region && !campaign.region.startsWith("[")) ? campaign.region : "", timezone: tz }];
   }
   return [];
 }
@@ -38,14 +41,40 @@ export function CampaignMARTRegion({ campaign }: Props) {
   const [regionCards, setRegionCards] = useState<RegionCard[]>(() => parseRegions(campaign));
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState<RegionCard>({ country: "", region: "", timezone: "", messaging_note: "" });
+  const [form, setForm] = useState<RegionCard>({ country: "", region: "", timezone: "" });
   const [saving, setSaving] = useState(false);
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
 
-  // Sync state when campaign.region changes externally
   useEffect(() => {
     setRegionCards(parseRegions(campaign));
   }, [campaign.region]);
+
+  const selectedRegionNames = useMemo(
+    () => Array.from(new Set(regionCards.map(r => r.region).filter(Boolean))),
+    [regionCards]
+  );
+
+  // Live counts of accounts/contacts in selected regions
+  const { data: counts } = useQuery({
+    queryKey: ["region-audience-counts", selectedRegionNames.join(",")],
+    queryFn: async () => {
+      if (selectedRegionNames.length === 0) return { accounts: 0, contacts: 0 };
+      const [{ count: accountCount }, { data: regionAccounts }] = await Promise.all([
+        supabase.from("accounts").select("id", { count: "exact", head: true }).in("region", selectedRegionNames),
+        supabase.from("accounts").select("account_name").in("region", selectedRegionNames),
+      ]);
+      let contactCount = 0;
+      if (regionAccounts && regionAccounts.length > 0) {
+        const names = regionAccounts.map((a: any) => a.account_name).filter(Boolean);
+        if (names.length > 0) {
+          const { count } = await supabase.from("contacts").select("id", { count: "exact", head: true }).in("company_name", names);
+          contactCount = count || 0;
+        }
+      }
+      return { accounts: accountCount || 0, contacts: contactCount };
+    },
+    enabled: selectedRegionNames.length > 0,
+  });
 
   const filteredCountries = useMemo(() => {
     if (!form.region) return countries;
@@ -58,7 +87,7 @@ export function CampaignMARTRegion({ campaign }: Props) {
   }, [form.country]);
 
   const openAdd = () => {
-    setForm({ country: "", region: "", timezone: "", messaging_note: "" });
+    setForm({ country: "", region: "", timezone: "" });
     setEditIndex(null);
     setFormOpen(true);
   };
@@ -150,10 +179,26 @@ export function CampaignMARTRegion({ campaign }: Props) {
               </div>
             </div>
             {r.timezone && <p className="text-xs text-muted-foreground">{getTimezoneDisplay(r.timezone)}</p>}
-            {r.messaging_note && <p className="text-xs text-muted-foreground italic mt-1">{r.messaging_note}</p>}
           </div>
         ))}
       </div>
+
+      {/* Live counter footer */}
+      {selectedRegionNames.length > 0 && (
+        <div className="flex items-center gap-4 px-3 py-2 rounded-lg bg-muted/40 border border-border text-xs">
+          <div className="flex items-center gap-1.5">
+            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="font-medium">{counts?.accounts ?? "…"}</span>
+            <span className="text-muted-foreground">accounts</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Users className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="font-medium">{counts?.contacts ?? "…"}</span>
+            <span className="text-muted-foreground">contacts</span>
+          </div>
+          <span className="text-muted-foreground">available in {selectedRegionNames.join(", ")}</span>
+        </div>
+      )}
 
       {formOpen && (
         <div className="border border-border rounded-lg p-4 space-y-3 bg-muted/30">
@@ -186,10 +231,6 @@ export function CampaignMARTRegion({ campaign }: Props) {
               </Select>
             </div>
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Messaging Note</Label>
-            <Textarea value={form.messaging_note} onChange={e => setForm({ ...form, messaging_note: e.target.value })} placeholder="Region-specific messaging variations..." rows={2} className="text-sm" />
-          </div>
           <div className="flex gap-2 justify-end">
             <Button variant="outline" size="sm" onClick={() => setFormOpen(false)}>Cancel</Button>
             <Button size="sm" onClick={saveCard} disabled={!form.region}>{editIndex !== null ? "Update" : "Add"}</Button>
@@ -197,7 +238,6 @@ export function CampaignMARTRegion({ campaign }: Props) {
         </div>
       )}
 
-      {/* Delete Confirmation */}
       <AlertDialog open={deleteIndex !== null} onOpenChange={(open) => !open && setDeleteIndex(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

@@ -21,7 +21,6 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { CampaignModal } from "@/components/campaigns/CampaignModal";
 import { CampaignMARTStrategy } from "@/components/campaigns/CampaignMARTStrategy";
-import { CampaignAccountsContacts } from "@/components/campaigns/CampaignAccountsContacts";
 import { CampaignCommunications } from "@/components/campaigns/CampaignCommunications";
 import { CampaignAnalytics } from "@/components/campaigns/CampaignAnalytics";
 import { CampaignActionItems } from "@/components/campaigns/CampaignActionItems";
@@ -221,14 +220,13 @@ export default function CampaignDetail() {
         </div>
       )}
 
-      {/* 7 Tabs per spec */}
+      {/* 5 Tabs */}
       <div className="flex-1 overflow-hidden px-4 pt-3 pb-4">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="overflow-x-auto">
-            <TabsList className="w-full grid grid-cols-6">
+            <TabsList className="w-full grid grid-cols-5">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="mart">MART Strategy</TabsTrigger>
-              <TabsTrigger value="accounts-contacts">Accounts & Contacts</TabsTrigger>
               <TabsTrigger value="outreach">Outreach</TabsTrigger>
               <TabsTrigger value="tasks">Tasks</TabsTrigger>
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
@@ -249,7 +247,7 @@ export default function CampaignDetail() {
               />
             </TabsContent>
 
-            {/* MART Strategy — unified tab */}
+            {/* MART Strategy — unified tab (Region → Audience → Message → Timing) */}
             <TabsContent value="mart" className="mt-0">
               <CampaignMARTStrategy
                 campaignId={campaign.id}
@@ -259,20 +257,21 @@ export default function CampaignDetail() {
                 isCampaignEnded={isCampaignEnded}
                 daysRemaining={daysRemaining}
                 timingNotes={detail.mart?.timing_notes}
+                campaignName={campaign.campaign_name}
+                campaignOwner={campaign.owner}
+                endDate={campaign.end_date}
                 contentCounts={{
                   emailTemplateCount: detail.emailTemplates.filter(t => t.email_type !== "LinkedIn-Connection" && t.email_type !== "LinkedIn-Followup").length,
                   phoneScriptCount: detail.phoneScripts.length,
                   linkedinTemplateCount: detail.emailTemplates.filter(t => t.email_type === "LinkedIn-Connection" || t.email_type === "LinkedIn-Followup").length,
                   materialCount: detail.materials.length,
                   regionCount: (() => { try { const arr = JSON.parse(campaign.region || ""); return Array.isArray(arr) ? arr.length : 0; } catch { return campaign.region ? 1 : 0; } })(),
-                  hasAudienceData: (() => { try { const p = JSON.parse(campaign.target_audience || ""); return !!(p.job_titles?.length || p.departments?.length || p.seniorities?.length || p.industries?.length || p.company_sizes?.length); } catch { return false; } })(),
+                  accountCount: detail.accounts.length,
+                  contactCount: detail.contacts.length,
                 }}
               />
             </TabsContent>
 
-            <TabsContent value="accounts-contacts" className="mt-0">
-              <CampaignAccountsContacts campaignId={campaign.id} isCampaignEnded={isCampaignEnded} campaignName={campaign.campaign_name} campaignOwner={campaign.owner} endDate={campaign.end_date} />
-            </TabsContent>
             <TabsContent value="outreach" className="mt-0">
               <CampaignCommunications campaignId={campaign.id} isCampaignEnded={isCampaignEnded} />
             </TabsContent>

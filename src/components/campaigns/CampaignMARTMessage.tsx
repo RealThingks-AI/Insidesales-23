@@ -9,16 +9,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Plus, Trash2, Mail, Phone, MessageSquare, Upload, FileText, Pencil, Download, X, Copy, CopyPlus, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Mail, Phone, MessageSquare, Upload, FileText, Pencil, Download, X, Copy, CopyPlus, ChevronDown, ChevronRight, Sparkles, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import type { Campaign } from "@/hooks/useCampaigns";
 
 interface Props {
   campaignId: string;
+  campaign?: Campaign;
+  selectedRegions?: string[];
+  audienceCounts?: { accounts: number; contacts: number };
 }
 
 const SEGMENTS = ["C-Suite", "VP", "Director", "Manager", "Team Lead", "Individual Contributor"];
@@ -74,7 +78,7 @@ function parseObjectionArray(text: string | null): { objection: string; response
   try { const arr = JSON.parse(text); return Array.isArray(arr) ? arr : []; } catch { return text ? [{ objection: text, response: "" }] : []; }
 }
 
-export function CampaignMARTMessage({ campaignId }: Props) {
+export function CampaignMARTMessage({ campaignId, campaign, selectedRegions = [], audienceCounts }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [emailModalOpen, setEmailModalOpen] = useState(false);
@@ -85,8 +89,50 @@ export function CampaignMARTMessage({ campaignId }: Props) {
   const [editLinkedinId, setEditLinkedinId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [expandedScripts, setExpandedScripts] = useState<Set<string>>(new Set());
+  const [aiLoading, setAiLoading] = useState<string | null>(null);
 
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string; name: string; filePath?: string } | null>(null);
+
+  const buildAiContext = () => ({
+    campaign_name: campaign?.campaign_name || "Campaign",
+    campaign_type: campaign?.campaign_type || undefined,
+    goal: campaign?.goal || undefined,
+    regions: selectedRegions,
+    accountCount: audienceCounts?.accounts || 0,
+    contactCount: audienceCounts?.contacts || 0,
+  });
+
+  const generateWithAI = async (templateType: "email" | "linkedin-connection" | "linkedin-followup" | "phone", userInstructions?: string) => {
+    setAiLoading(templateType);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-campaign-template", {
+        body: { templateType, campaignContext: buildAiContext(), userInstructions },
+      });
+      if (error) throw error;
+      if (!data?.success || !data?.result) throw new Error(data?.error || "AI generation failed");
+      const r = data.result;
+      if (templateType === "email") {
+        setEmailForm(prev => ({ ...prev, subject: r.subject || prev.subject, body: r.body || prev.body }));
+        toast({ title: "Email draft generated" });
+      } else if (templateType === "linkedin-connection" || templateType === "linkedin-followup") {
+        setLinkedinForm(prev => ({ ...prev, body: r.body || prev.body }));
+        toast({ title: "LinkedIn draft generated" });
+      } else if (templateType === "phone") {
+        setScriptForm(prev => ({
+          ...prev,
+          opening_script: r.opening_script || prev.opening_script,
+          talking_points: Array.isArray(r.talking_points) && r.talking_points.length > 0 ? r.talking_points : prev.talking_points,
+          questions: Array.isArray(r.discovery_questions) && r.discovery_questions.length > 0 ? r.discovery_questions : prev.questions,
+          objections: Array.isArray(r.objections) && r.objections.length > 0 ? r.objections : prev.objections,
+        }));
+        toast({ title: "Phone script generated" });
+      }
+    } catch (err: any) {
+      toast({ title: "AI generation failed", description: err.message || "Please try again", variant: "destructive" });
+    } finally {
+      setAiLoading(null);
+    }
+  };
 
   const { data: emailTemplates = [] } = useQuery({
     queryKey: ["campaign-email-templates", campaignId],
@@ -661,6 +707,10 @@ export function CampaignMARTMessage({ campaignId }: Props) {
             </div>
           </div>
           <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => generateWithAI("email")} disabled={aiLoading === "email"}>
+              {aiLoading === "email" ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+              Generate with AI
+            </Button>
             <Button variant="outline" onClick={() => setEmailModalOpen(false)}>Cancel</Button>
             <Button onClick={saveEmailTemplate} disabled={!emailForm.template_name || !emailForm.subject || !emailForm.body}>Save</Button>
           </DialogFooter>
@@ -705,6 +755,10 @@ export function CampaignMARTMessage({ campaignId }: Props) {
             </div>
           </div>
           <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => generateWithAI("phone")} disabled={aiLoading === "phone"}>
+              {aiLoading === "phone" ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+              Generate with AI
+            </Button>
             <Button variant="outline" onClick={() => setScriptModalOpen(false)}>Cancel</Button>
             <Button onClick={savePhoneScript} disabled={!scriptForm.script_name}>Save</Button>
           </DialogFooter>
@@ -743,6 +797,10 @@ export function CampaignMARTMessage({ campaignId }: Props) {
             </div>
           </div>
           <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => generateWithAI(linkedinForm.email_type === "LinkedIn-Connection" ? "linkedin-connection" : "linkedin-followup")} disabled={aiLoading?.startsWith("linkedin")}>
+              {aiLoading?.startsWith("linkedin") ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+              Generate with AI
+            </Button>
             <Button variant="outline" onClick={() => setLinkedinModalOpen(false)}>Cancel</Button>
             <Button onClick={saveLinkedinTemplate} disabled={!linkedinForm.template_name || !linkedinForm.body || linkedinOverLimit}>Save</Button>
           </DialogFooter>

@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.check-email-replies]
 verify_jwt = false
+
+[functions.generate-campaign-template]
+verify_jwt = true

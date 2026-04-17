@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { CheckCircle2, Circle, ChevronDown, ChevronRight, ChevronsUpDown, Mail, Phone, MessageSquare, FileText, Users, Globe, Clock } from "lucide-react";
+import { CheckCircle2, Circle, ChevronDown, ChevronRight, ChevronsUpDown, Mail, Users, Globe, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,40 +22,38 @@ interface Props {
   isCampaignEnded: boolean;
   daysRemaining: number | null;
   timingNotes?: string | null;
+  campaignName?: string;
+  campaignOwner?: string | null;
+  endDate?: string | null;
   contentCounts?: {
     emailTemplateCount: number;
     phoneScriptCount: number;
     linkedinTemplateCount: number;
     materialCount: number;
     regionCount: number;
-    hasAudienceData: boolean;
+    accountCount: number;
+    contactCount: number;
   };
 }
 
-function parseAudienceHasContent(raw: string | null): boolean {
-  if (!raw) return false;
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed.job_titles?.length || parsed.departments?.length || parsed.seniorities?.length || parsed.industries?.length || parsed.company_sizes?.length) return true;
-    if (Array.isArray(parsed) && parsed.length > 0) return true;
-  } catch {}
-  return false;
-}
-
-function parseRegionCount(raw: string | null): number {
-  if (!raw) return 0;
+export function parseSelectedRegions(raw: string | null): string[] {
+  if (!raw) return [];
   try {
     const arr = JSON.parse(raw);
-    if (Array.isArray(arr)) return arr.length;
+    if (Array.isArray(arr)) {
+      return Array.from(new Set(arr.map((r: any) => r.region).filter(Boolean)));
+    }
   } catch {}
-  return raw ? 1 : 0;
+  return raw && !raw.startsWith("[") ? [raw] : [];
 }
 
-export function CampaignMARTStrategy({ campaignId, campaign, isMARTComplete, updateMartFlag, isCampaignEnded, daysRemaining, timingNotes, contentCounts }: Props) {
+export function CampaignMARTStrategy({ campaignId, campaign, isMARTComplete, updateMartFlag, isCampaignEnded, daysRemaining, timingNotes, campaignName, campaignOwner, endDate, contentCounts }: Props) {
   const queryClient = useQueryClient();
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    message: true, audience: false, region: false, timing: false,
+    region: true, audience: false, message: false, timing: false,
   });
+
+  const selectedRegions = useMemo(() => parseSelectedRegions(campaign.region), [campaign.region]);
 
   const toggleSection = (key: string) => {
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -63,24 +61,24 @@ export function CampaignMARTStrategy({ campaignId, campaign, isMARTComplete, upd
 
   const toggleAll = () => {
     const allOpen = Object.values(openSections).every(Boolean);
-    const newState = { message: !allOpen, audience: !allOpen, region: !allOpen, timing: !allOpen };
+    const newState = { region: !allOpen, audience: !allOpen, message: !allOpen, timing: !allOpen };
     setOpenSections(newState);
   };
 
   const validateSection = (key: string): string | null => {
     const counts = contentCounts;
     switch (key) {
+      case "region":
+        if ((counts?.regionCount ?? 0) === 0)
+          return "Add at least 1 region before marking Region as done.";
+        return null;
+      case "audience":
+        if ((counts?.accountCount ?? 0) === 0 && (counts?.contactCount ?? 0) === 0)
+          return "Add at least 1 account or contact before marking Audience as done.";
+        return null;
       case "message":
         if (counts && counts.emailTemplateCount === 0 && counts.phoneScriptCount === 0 && counts.linkedinTemplateCount === 0)
           return "Add at least 1 email template, call script, or LinkedIn message before marking Message as done.";
-        return null;
-      case "audience":
-        if (!parseAudienceHasContent(campaign.target_audience))
-          return "Define at least one audience criteria (job titles, departments, etc.) before marking Audience as done.";
-        return null;
-      case "region":
-        if (parseRegionCount(campaign.region) === 0)
-          return "Add at least 1 region before marking Region as done.";
         return null;
       case "timing":
         if (!campaign.start_date || !campaign.end_date)
@@ -118,25 +116,22 @@ export function CampaignMARTStrategy({ campaignId, campaign, isMARTComplete, upd
     toast.success("Timing note saved");
   };
 
-  const completedCount = [isMARTComplete.message, isMARTComplete.audience, isMARTComplete.region, isMARTComplete.timing].filter(Boolean).length;
+  const completedCount = [isMARTComplete.region, isMARTComplete.audience, isMARTComplete.message, isMARTComplete.timing].filter(Boolean).length;
   const progressPercent = (completedCount / 4) * 100;
 
   const getContentSummary = (key: string): string => {
     if (!contentCounts) return "";
     switch (key) {
+      case "region":
+        return contentCounts.regionCount > 0 ? `${contentCounts.regionCount} region${contentCounts.regionCount > 1 ? "s" : ""}` : "No regions";
+      case "audience":
+        return `${contentCounts.accountCount} accounts · ${contentCounts.contactCount} contacts`;
       case "message": {
         const parts: string[] = [];
         if (contentCounts.emailTemplateCount > 0) parts.push(`${contentCounts.emailTemplateCount} email${contentCounts.emailTemplateCount > 1 ? "s" : ""}`);
         if (contentCounts.phoneScriptCount > 0) parts.push(`${contentCounts.phoneScriptCount} script${contentCounts.phoneScriptCount > 1 ? "s" : ""}`);
         if (contentCounts.linkedinTemplateCount > 0) parts.push(`${contentCounts.linkedinTemplateCount} LinkedIn`);
-        if (contentCounts.materialCount > 0) parts.push(`${contentCounts.materialCount} file${contentCounts.materialCount > 1 ? "s" : ""}`);
         return parts.join(", ");
-      }
-      case "audience":
-        return contentCounts.hasAudienceData ? "Configured" : "Not configured";
-      case "region": {
-        const rc = parseRegionCount(campaign.region);
-        return rc > 0 ? `${rc} region${rc > 1 ? "s" : ""}` : "No regions";
       }
       case "timing":
         return campaign.start_date && campaign.end_date ? `${campaign.start_date} → ${campaign.end_date}` : "Dates not set";
@@ -146,22 +141,23 @@ export function CampaignMARTStrategy({ campaignId, campaign, isMARTComplete, upd
   };
 
   const sectionIcons: Record<string, React.ReactNode> = {
-    message: <Mail className="h-4 w-4" />,
-    audience: <Users className="h-4 w-4" />,
     region: <Globe className="h-4 w-4" />,
+    audience: <Users className="h-4 w-4" />,
+    message: <Mail className="h-4 w-4" />,
     timing: <Clock className="h-4 w-4" />,
   };
 
+  // Order: Region → Audience → Message → Timing
   const sections = [
-    { key: "message", label: "Message", flag: "message_done", done: isMARTComplete.message },
-    { key: "audience", label: "Audience", flag: "audience_done", done: isMARTComplete.audience },
     { key: "region", label: "Region", flag: "region_done", done: isMARTComplete.region },
+    { key: "audience", label: "Audience", flag: "audience_done", done: isMARTComplete.audience },
+    { key: "message", label: "Message", flag: "message_done", done: isMARTComplete.message },
     { key: "timing", label: "Timing", flag: "timing_done", done: isMARTComplete.timing },
   ];
 
   return (
     <div className="space-y-3">
-      {/* Overall MART Progress — compact single row */}
+      {/* Overall MART Progress */}
       <Card>
         <CardContent className="py-3 px-4">
           <div className="flex items-center gap-4">
@@ -219,9 +215,25 @@ export function CampaignMARTStrategy({ campaignId, campaign, isMARTComplete, upd
             </CollapsibleTrigger>
             <CollapsibleContent>
               <CardContent className="pt-0 px-4 pb-4">
-                {section.key === "message" && <CampaignMARTMessage campaignId={campaignId} />}
-                {section.key === "audience" && <CampaignMARTAudience campaign={campaign} />}
                 {section.key === "region" && <CampaignMARTRegion campaign={campaign} />}
+                {section.key === "audience" && (
+                  <CampaignMARTAudience
+                    campaign={campaign}
+                    selectedRegions={selectedRegions}
+                    campaignName={campaignName}
+                    campaignOwner={campaignOwner}
+                    endDate={endDate}
+                    isCampaignEnded={isCampaignEnded}
+                  />
+                )}
+                {section.key === "message" && (
+                  <CampaignMARTMessage
+                    campaignId={campaignId}
+                    campaign={campaign}
+                    selectedRegions={selectedRegions}
+                    audienceCounts={{ accounts: contentCounts?.accountCount ?? 0, contacts: contentCounts?.contactCount ?? 0 }}
+                  />
+                )}
                 {section.key === "timing" && (
                   <CampaignMARTTiming
                     campaign={campaign}

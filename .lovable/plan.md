@@ -1,45 +1,82 @@
 
 
-# Fix Plan: Account Table & Modal Improvements
+# MART Workflow Restructure — Region → Audience → Message → Timing
 
-## Changes
+## New Order
 
-### 1. Add Description Column to Account Table (AccountTable.tsx + AccountTableBody.tsx)
+```text
+1. Region    →  2. Audience    →  3. Message      →  4. Timing
+   (geography)   (filtered by      (AI uses region    (when to
+                  region picks)     + audience ctx)    execute)
+```
 
-**AccountTable.tsx (line 42):** Insert `description` column at order 1 (after account_name), shift all other orders up by 1. Also add `'description'` to `searchFields`.
+Region first defines geography. Audience picks accounts/contacts within those regions. Message generates AI templates using both as context. Timing schedules execution.
 
-**AccountTableBody.tsx:**
-- Add `description` field formatting in `formatCellValue` — render with `line-clamp-2` and `truncate` to prevent overflow
-- In table cell classes (line 277-285), add specific width rule for `description`: `min-w-[250px] max-w-[350px]`
-- Apply `table-fixed` layout with explicit column widths to prevent content overlap across ALL columns
-- For `linked_contacts` column header, center-align the label text to match the centered badge data
+## Tab Restructure (CampaignDetail)
 
-### 2. Fix Column Overflow / Alignment Issues (AccountTableBody.tsx)
+6 tabs → **5 tabs**: Overview · MART Strategy · Outreach · Tasks · Analytics
+- "Accounts & Contacts" tab merged into MART → Audience
+- "Materials" merged into Outreach tab
 
-- Add `overflow-hidden text-ellipsis` to all table cells to prevent text from bleeding into adjacent columns
-- Set `table-layout: fixed` on the Table element so column widths are enforced
-- Ensure `linked_contacts` header text is centered (currently uses left-aligned `<span>` but data is centered)
-- Set proper `min-width` values: account_name 200px, description 250px, linked 80px centered, others 100px
+## Section Changes
 
-### 3. Rearrange Account Modal Fields (AccountModal.tsx)
+### 1. Region (first)
+- Multi-region cards (existing UI from `CampaignMARTRegion.tsx`).
+- Remove `messaging_note` field (unused).
+- Add live counter footer: **"X accounts and Y contacts available in selected regions"**.
+- Mark Done requires ≥1 region.
 
-Restructure the form layout from the current 2-column grid to specific rows:
+### 2. Audience (second)
+- **Drop** persona JSON form (`job_titles`, `departments`, etc.) from rendering. DB column preserved.
+- **Embed** `CampaignAccountsContacts` in compact mode, pre-filtered by `selectedRegions` from step 1.
+- "Add Accounts" / "Add Contacts" modals scope queries to selected regions only.
+- New bulk filter chips in Add modals: **Position** (multi-select), **Industry** (multi-select), "Select all filtered".
+- If no regions selected → inline warning "Select regions in step 1 first" + fallback to all regions.
+- Mark Done requires ≥1 account OR ≥1 contact linked.
 
-- **Row 1:** Account Name + Industry (2-col grid)
-- **Row 2:** Description (full width textarea)
-- **Row 3:** Website + Phone (2-col grid)
-- **Row 4:** Region + Country (2-col grid) — country selection auto-updates region via existing `countryToRegion` mapping. The existing `countryRegionMapping.ts` already has 200+ countries and 7 regions with proper sync.
-- **Row 5:** Company Type + Currency + Status (3-col grid)
+### 3. Message (third)
+- Add **"Generate with AI"** button on Email, LinkedIn, and Phone Script create/edit modals.
+- AI prompt context: campaign name, type, goal, **selected regions + linked audience** (now available since steps 1 & 2 ran first).
+- New edge function `generate-campaign-template` using Lovable AI Gateway (`google/gemini-3-flash-preview`) with tool-calling for structured JSON (subject/body for email; body for LinkedIn; opening/talking_points/objections for phone).
+- Materials block removed from this section.
 
-### 4. Country/Region Filtering in Modal
+### 4. Timing (last)
+- Keep existing date inputs.
+- Export `isWithinActiveWindow(campaign)` helper from `CampaignMARTTiming`.
+- Outreach actions (Send Email / Log Call / LinkedIn) blocked outside campaign date range with toast.
+- Active-window banner on Outreach tab.
+- Mark Done requires start_date + end_date with end_date ≥ today.
 
-Add filtered country list based on selected region. When user selects a region first, only show countries from that region. When country is selected, auto-fill region (already working).
+## Cross-Section Wiring
 
-## Files Modified
+| User action | System reaction |
+|---|---|
+| Picks regions in step 1 | Cached on campaign; Audience auto-refilters |
+| Opens Add Accounts (step 2) | Query: `accounts.region IN (selectedRegions)` |
+| Opens Add Contacts (step 2) | Filter via linked account region |
+| Clears all regions | Audience shows warning, falls back to all |
+| Generates AI template (step 3) | Prompt includes regions + linked accounts/contacts summary |
+
+## Files to Modify
 
 | File | Change |
-|------|--------|
-| `src/components/AccountTable.tsx` | Add description column to defaultColumns, add to searchFields |
-| `src/components/account-table/AccountTableBody.tsx` | Add description cell formatting, fix overflow with table-fixed layout, center Linked header |
-| `src/components/AccountModal.tsx` | Rearrange fields into 5 specific rows, add region-based country filtering |
+|---|---|
+| `src/pages/CampaignDetail.tsx` | Drop Accounts/Contacts tab, reduce to 5 tabs |
+| `src/components/campaigns/CampaignMARTStrategy.tsx` | Reorder sections (region → audience → message → timing); update validation; pass region/audience counts down |
+| `src/components/campaigns/CampaignMARTRegion.tsx` | Remove `messaging_note`; add live account/contact count footer |
+| `src/components/campaigns/CampaignMARTAudience.tsx` | Replace persona form with `<CampaignAccountsContacts compact selectedRegions={...} />` |
+| `src/components/campaigns/CampaignAccountsContacts.tsx` | Add `compact` + `selectedRegions` props; pre-filter queries; add Position/Industry filter chips in Add modals |
+| `src/components/campaigns/CampaignMARTMessage.tsx` | Add "Generate with AI" buttons on each template type modal; remove materials block |
+| `src/components/campaigns/CampaignMARTTiming.tsx` | Export `isWithinActiveWindow(campaign)` helper |
+| `src/components/campaigns/CampaignCommunications.tsx` | Block outreach outside dates; active-window banner; small materials list |
+| **NEW** `supabase/functions/generate-campaign-template/index.ts` | Lovable AI Gateway call w/ tool-calling for structured templates |
+| `supabase/config.toml` | Register `generate-campaign-template` |
+
+## Technical Notes
+
+- **AI**: `LOVABLE_API_KEY` already configured. Default model `google/gemini-3-flash-preview`. Tool-calling enforces JSON schema per template type.
+- **Region source**: existing `src/utils/countryRegionMapping.ts`.
+- **Backward compat**: existing `target_audience` JSON preserved in DB; UI no longer renders or requires it. Audience "Mark Done" reads `campaign_accounts` / `campaign_contacts` counts (already cached).
+- **Performance**: live counts use cached campaign-detail query; Add modals filter server-side via `.in('region', selectedRegions)`.
+- **No DB migration required** — uses existing tables and columns.
 

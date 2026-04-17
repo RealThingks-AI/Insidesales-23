@@ -9,16 +9,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Plus, Trash2, Mail, Phone, MessageSquare, Upload, FileText, Pencil, Download, X, Copy, CopyPlus, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Mail, Phone, MessageSquare, Upload, FileText, Pencil, Download, X, Copy, CopyPlus, ChevronDown, ChevronRight, Sparkles, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import type { Campaign } from "@/hooks/useCampaigns";
 
 interface Props {
   campaignId: string;
+  campaign?: Campaign;
+  selectedRegions?: string[];
+  audienceCounts?: { accounts: number; contacts: number };
 }
 
 const SEGMENTS = ["C-Suite", "VP", "Director", "Manager", "Team Lead", "Individual Contributor"];
@@ -74,7 +78,7 @@ function parseObjectionArray(text: string | null): { objection: string; response
   try { const arr = JSON.parse(text); return Array.isArray(arr) ? arr : []; } catch { return text ? [{ objection: text, response: "" }] : []; }
 }
 
-export function CampaignMARTMessage({ campaignId }: Props) {
+export function CampaignMARTMessage({ campaignId, campaign, selectedRegions = [], audienceCounts }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [emailModalOpen, setEmailModalOpen] = useState(false);
